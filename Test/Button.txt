@@ -1,0 +1,37 @@
+#include <avr/io.h>
+#include <util/delay.h>
+
+void initialize() {
+    // Set Port A as input for buttons
+    DDRA = 0x00;
+
+    // Set Port B as input for the priority encoder output
+    DDRB = 0x00;
+
+    // Set Port C0 as output for the LED
+    DDRC |= (1 << PC0);
+
+    // Enable internal pull-up resistors for buttons on Port A
+    PORTA = 0xFF;
+}
+
+int main(void) {
+    initialize();
+
+    while (1) {
+        // Read input from Port B (output of 74LS148)
+        uint8_t priorityEncoderOutput = PINB & 0x07; // Consider only the lower 3 bits
+
+        // Check conditions for turning on the LED on PC0
+        if ((priorityEncoderOutput & (1 << PB0)) && !(priorityEncoderOutput & (1 << PB1)) && !(priorityEncoderOutput & (1 << PB2))) {
+            // PB0 is high, PB1 and PB2 are low
+            PORTC |= (1 << PC0); // Turn on the LED on PC0
+        } else {
+            PORTC &= ~(1 << PC0); // Turn off the LED on PC0
+        }
+
+        _delay_ms(100); // Delay for stability (you may need to adjust this based on your specific requirements)
+    }
+
+    return 0;
+}

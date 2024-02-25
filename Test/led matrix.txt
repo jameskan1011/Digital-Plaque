@@ -1,0 +1,81 @@
+#include <avr/io.h>
+#include <util/delay.h>
+
+#define CLK_PIN   PB7
+#define DATA_PIN  PB5
+#define CS_PIN    PB2
+#define SEGMENT_COUNT 4
+
+const uint8_t charPatterns[][8] = {
+	{0b01000001, 0b01000001, 0b01000001, 0b01000001, 0b00100010, 0b00100010, 0b00010100, 0b00001000}, // 'V'
+	{0b00000001, 0b00000010, 0b00000010, 0b01110010, 0b10001010, 0b11111010, 0b10000010, 0b01110001}, // 'e'
+	{0b11000111, 0b00101000, 0b00001000, 0b00001000, 0b00001111, 0b00001000, 0b00101000, 0b11001000}, // 'C'
+	{0b00111100, 0b10100010, 0b10100010, 0b10100010, 0b10100010, 0b10100010, 0b10100010, 0b10111100}, // 'A'
+};
+
+void send(uint8_t matrix, uint8_t registerIndex, uint8_t value) {
+	PORTB &= ~(1 << CS_PIN);  // CS_PIN low
+
+	// Propagate the data through the series connection
+	for (uint8_t i = 0; i < matrix; i++) {
+		writeWord(0, 0);  // Send a dummy byte to propagate the data
+	}
+
+	writeWord(registerIndex, value);
+
+	// Clear any remaining propagation
+	for (uint8_t i = matrix; i < SEGMENT_COUNT - 1; i++) {
+		writeWord(0, 0);  // Send a dummy byte to clear any remaining propagation
+	}
+
+	PORTB |= (1 << CS_PIN);  // CS_PIN high
+}
+
+void clearDisplays() {
+	for (uint8_t i = 0; i < SEGMENT_COUNT; i++) {
+		for (uint8_t row = 1; row <= 8; row++) {
+			send(i, row, 0);
+		}
+	}
+}
+
+void initSPI(void) {
+	DDRB |= (1 << CLK_PIN) | (1 << DATA_PIN) | (1 << CS_PIN);
+	PORTB |= (1 << CS_PIN);  // CS_PIN high initially
+	SPCR |= (1 << MSTR) | (1 << SPE);  // Enable SPI as master
+	
+	// Set display brightness
+	for (uint8_t i = 0; i < SEGMENT_COUNT; i++) {
+		send(i, 0x0A, 0x00);  // Set brightness (adjust as needed, 0x00 to 0x0F)
+	}
+}
+
+void writeByte(uint8_t byte) {
+	SPDR = byte;
+	while (!(SPSR & (1 << SPIF)));  // Wait for transmission complete
+}
+
+void writeWord(uint8_t address, uint8_t data) {
+	writeByte(address);
+	writeByte(data);
+}
+
+int main(void) {
+	initSPI();
+	for (uint8_t i = 0; i < SEGMENT_COUNT; i++) {
+		send(i, 0xF, 0); // Disable test mode
+		send(i, 0xB, 7); // Set scanlines to 8
+		send(i, 0xC, 1); // Enable display
+	}
+	clearDisplays();
+
+	while (1) {
+		for (uint8_t i = 0; i < SEGMENT_COUNT; i++) {
+			for (uint8_t j = 0; j < 8; j++) {
+				send(i, j + 1, charPatterns[i][j]);
+			}
+		}
+	}
+
+	return 0;
+}
